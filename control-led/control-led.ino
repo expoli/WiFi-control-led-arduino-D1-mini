@@ -78,20 +78,18 @@ void loop()
         Udp.read(packetBuffer, UDP_TX_PACKET_MAX_SIZE); // 接收数据
         Serial.println("内容:");
         Serial.println(packetBuffer); // 输出内容
-        // d0_status = digitalRead(D0);
-        // Serial.println("D0 状态为:");
-        // Serial.println(status);
-        if (packetBuffer)
+
+        if (packetBuffer)               // 接收到控制信号
         {
-            digitalWrite(D0, 1);
-            d0_status = digitalRead(D0);
+            digitalWrite(D0, 1);        // D1 置1
+            d0_status = digitalRead(D0);    // 读取D1 引脚状态
             Serial.println("D0 状态已设置为为:");
-            Serial.println(d0_status);
-            delay(2000);
-            digitalWrite(D0, 0);
+            Serial.println(d0_status);      // 打印现在的状态
+            delay(2000);                    // 继电器通电两秒
+            digitalWrite(D0, 0);            // D1 端口置0
         }
     }
-    d0_status = digitalRead(D0);
+    d0_status = digitalRead(D0);           // 日常状态检查代码
     Serial.println("D0 现在的状态状态为:");
     Serial.println(d0_status);
     delay(1000);
