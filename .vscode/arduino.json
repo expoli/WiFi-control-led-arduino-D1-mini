@@ -1,0 +1,6 @@
+{
+    "programmer": "AVRISP mkII",
+    "port": "/dev/ttyUSB0",
+    "board": "arduino:avr:unowifi",
+    "sketch": "control-led/control-led.ino"
+}

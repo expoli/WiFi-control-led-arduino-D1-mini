@@ -16,10 +16,24 @@
 
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
+#include <string.h>
+#include <strings.h>
+
+// 阀->核心请求连接	“xiaojiazhikong,3,[$DEVICE_NAME],CORE,0,0,1,end”
+// 核心->阀回应连接	“xiaojiazhikong,2,[$DEVICE_NAME], [$DEVICE_NAME2],1,0,1,end”
+// 核心->阀请求工作状态	“xiaojiazhikong,2,[$DEVICE_NAME], [$DEVICE_NAME2],5,0,1,end”
+// 阀->核心回应工作状态	“xiaojiazhikong,3,[$DEVICE_NAME], [$DEVICE_NAME2],6,1,[$DEVICE_STATE],1,end”
+// 核心->阀设置工作状态	“xiaojiazhikong,2,[$DEVICE_NAME], [$DEVICE_NAME2],7,1,[$DEVICE_STATE],1,end”
 
 #ifndef STASSID
-#define STASSID "HiWiFi_62A784" //SSID
-#define STAPSK "11112222"       //SSID-PASSWORD
+#define STASSID "shuangzu" //SSID
+#define STAPSK "mmhjd4321"       //SSID-PASSWORD
+#define CORE_IP "192.168.199.56"
+#define IOT_LINK_CORE "xiaojiazhikong,3,[$DEVICE_NAME],CORE,0,0,1,end"
+#define CORE_RELAY_IOT "xiaojiazhikong,2,[$DEVICE_NAME],[$DEVICE_NAME2],1,0,1,end"
+#define CORE_REQUEST_WORK_STATUS "xiaojiazhikong,2,[$DEVICE_NAME],[$DEVICE_NAME2],5,0,1,end" 
+#define IOT_RELAY_STATUS "xiaojiazhikong,3,[$DEVICE_NAME],[$DEVICE_NAME2],6,1,[$DEVICE_STATE],1,end"
+#define CORE_SET_STATUS "xiaojiazhikong,2,[$DEVICE_NAME],[$DEVICE_NAME2],7,1,[$DEVICE_STATE],1,end"
 #endif
 
 unsigned int localPort = 8888; // local port to listen on
@@ -44,20 +58,39 @@ void setup()
     Serial.println(WiFi.localIP());                      // 获取并打印IP
     Serial.printf("UDP server on port %d\n", localPort); // 本地udp 监听端口
     Udp.begin(localPort);                                // 开始udp 通信
-    pinMode(D0, OUTPUT);                                 // set onboard LED as output
+    pinMode(D6, OUTPUT);                                 // set onboard LED as output
 }
+
+// 阀->核心请求连接	“xiaojiazhikong,3,[$DEVICE_NAME],CORE,0,0,1,end”
+// 核心->阀回应连接	“xiaojiazhikong,2,[$DEVICE_NAME], [$DEVICE_NAME2],1,0,1,end”
+// 核心->阀请求工作状态	“xiaojiazhikong,2,[$DEVICE_NAME], [$DEVICE_NAME2],5,0,1,end”
+// 阀->核心回应工作状态	“xiaojiazhikong,3,[$DEVICE_NAME], [$DEVICE_NAME2],6,1,[$DEVICE_STATE],1,end”
+// 核心->阀设置工作状态	“xiaojiazhikong,2,[$DEVICE_NAME], [$DEVICE_NAME2],7,1,[$DEVICE_STATE],1,end”
+long workstatus = 2000;
 
 void loop()
 {
-    /*//发送数据
-    Udp.beginPacket("192.168.199.56", 8888);
-    Udp.write("helloworld");
-    Serial.println("have send helloworld");
+    // 发送数据
+    // 阀->核心请求连接
+    // 阀->核心请求连接	“xiaojiazhikong,3,[$DEVICE_NAME],CORE,0,0,1,end”
+    char charBuf[100];
+    char ipBuf[100];
+    int remote_port = 0;
+    String payload = IOT_LINK_CORE;
+    String StrStatusBuf;
+
+    payload.replace("[$DEVICE_NAME]","IOT");
+    payload.toCharArray(charBuf,100);
+    Udp.beginPacket(CORE_IP, 8888);
+    Udp.write(charBuf);
+    Serial.println(charBuf);
     Udp.endPacket();
-    delay(1000);*/
+    // delay(1000);
 
     int packetSize = Udp.parsePacket();
-    int d0_status = 0;
+    int D6_status = 0;
+
+    int received_sign = 0;
     //Serial.println(packetSize);
     if (packetSize)
     {
@@ -65,6 +98,7 @@ void loop()
         Serial.println(packetSize);
         Serial.print("发送方：");
         IPAddress remote = Udp.remoteIP();
+        String ip_remote;
         for (int i = 0; i < 4; i++) // 循环输出远程端格式化IP地址
         {
             Serial.print(remote[i], DEC);
@@ -73,26 +107,80 @@ void loop()
                 Serial.print(".");
             }
         }
+        for (int i = 0; i < 4; i++)
+        {
+            ip_remote += remote[i];
+            if (i<3)
+            {
+                ip_remote += ".";
+            }
+        }
+
+        ip_remote.toCharArray(ipBuf,100);
         Serial.print(",端口：");
         Serial.println(Udp.remotePort());               // 输出远程端端口
+
+        int remote_port = Udp.remotePort();
+        
         Udp.read(packetBuffer, UDP_TX_PACKET_MAX_SIZE); // 接收数据
         Serial.println("内容:");
         Serial.println(packetBuffer); // 输出内容
 
-        if (packetBuffer)               // 接收到控制信号
+        String StrPacketBuffer = packetBuffer;
+        if (StrPacketBuffer.startsWith("xiaojiazhikong,"))
+            received_sign = 1;
+    }
+
+    if (received_sign)
+    {
+        String StrPacketBuffer = packetBuffer;
+        payload = "xiaojiazhikong,2,CORE,IOT,1,0,1,end";
+        // payload.replace("[$DEVICE_NAME]","CORE");
+        // payload.replace("[$DEVICE_NAME2]","IOT");
+        // 核心->阀回应连接	“xiaojiazhikong,2,[$DEVICE_NAME], [$DEVICE_NAME2],1,0,1,end”
+        if (StrPacketBuffer.compareTo("xiaojiazhikong,2,CORE,IOT,1,0,1,end")>=8)
         {
-            digitalWrite(D0, 1);        // D1 置1
-            d0_status = digitalRead(D0);    // 读取D1 引脚状态
-            Serial.println("D0 状态已设置为为:");
-            Serial.println(d0_status);      // 打印现在的状态
-            delay(2000);                    // 继电器通电两秒
-            digitalWrite(D0, 0);            // D1 端口置0
+            Serial.println(StrPacketBuffer.compareTo("xiaojiazhikong,2,CORE,IOT,1,0,1,end"));
+            Serial.println("已和核心链接..............");
+        }
+        // 核心->阀请求工作状态	“xiaojiazhikong,2,[$DEVICE_NAME], [$DEVICE_NAME2],5,0,1,end”
+        else if (StrPacketBuffer.compareTo("xiaojiazhikong,2,CORE,IOT,5,0,1,end")>=8)
+        {
+            Serial.print("工作状态已返回:");
+
+            StrStatusBuf += workstatus;
+            StrStatusBuf.toCharArray(charBuf,100);
+            Udp.beginPacket("192.168.1.121", 44820);
+            Udp.write("工作状态已返回:");
+            Udp.write(charBuf);
+            Udp.endPacket();
+            Serial.println(workstatus>>1);
+        }
+        // 核心->阀设置工作状态	“xiaojiazhikong,2,[$DEVICE_NAME], [$DEVICE_NAME2],7,1,[$DEVICE_STATE],1,end”
+        else if (StrPacketBuffer.startsWith("xiaojiazhikong,2,CORE,IOT,7,1,"))
+        {
+            StrStatusBuf = StrPacketBuffer.substring(30,38);
+            workstatus = StrStatusBuf.toInt();
+            StrStatusBuf.toCharArray(charBuf,100);
+            Udp.beginPacket("192.168.1.121", 44820);
+            Udp.write("工作状态已设置为:");
+            Udp.write(workstatus);
+            Udp.endPacket();
+            Serial.print("工作状态已设置为");
+            Serial.println(charBuf);
         }
     }
-    d0_status = digitalRead(D0);           // 日常状态检查代码
-    Serial.println("D0 现在的状态状态为:");
-    Serial.println(d0_status);
-    delay(1000);
+    digitalWrite(D6, 1);        // D1 置1
+    D6_status = digitalRead(D6);    // 读取D6 引脚状态
+    Serial.println("D6 状态已设置为为:");
+    Serial.println(D6_status);      // 打印现在的状态
+    delay(3000-workstatus);           // 继电器通电两秒
+
+    digitalWrite(D6, 0);            // D6 端口置0
+    D6_status = digitalRead(D6);    // 读取D6 引脚状态
+    Serial.println("D6 状态已设置为为:");
+    Serial.println(D6_status);      // 打印现在的状态
+    delay(workstatus);
 }
 
 /*
